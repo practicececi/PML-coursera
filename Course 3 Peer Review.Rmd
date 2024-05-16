@@ -1,0 +1,173 @@
+---
+title: "Practical Machine Learning Peer Review"
+author: "Ceci Practice"
+date: "2024/5/16"
+output: html_document
+---
+**DATA SET**
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+The data for this project come from this source: 
+http://groupware.les.inf.puc-rio.br/har
+
+
+ The data set consists of measurements from 6 participants as to how well they performed dumbell exercises. The acceleromters that recorded the measurements were attached to variuous parts of their arms.   The particpants performed the Bicep Curl in 1 correct method and in 4 specific incorrect methods, resulting in 5 classes that will be predicted from the measurements.The correct class is Class A, the incorrect, but distinct classes are B, C, D and E.
+
+
+```{r tr}
+
+testing <- read.csv("pml-testing.csv")
+training <- read.csv("pml-training.csv", na.strings=c("","NA"))
+
+dim(training)
+dim(testing)
+
+#Getting rid of the summary statistics columns first
+# determine which columns have a lot of NA's'
+ 
+ idx<-apply(training, 2, function(x) sum(is.na(x)))
+
+#Ceate a column index of which columns to keep
+
+keepthesecolumns <- ifelse(idx == 0, TRUE, FALSE)
+
+# new training set without the columns of summary statistics
+
+training2 <- training[,keepthesecolumns]
+testing2 <- testing[, keepthesecolumns]
+dim(training2)
+dim(testing2)
+
+
+training3 <- training2[,8:ncol(training2)]
+testing3 <- testing2[,8:ncol(testing2)]
+dim(training3)
+dim(testing3)
+
+
+training3$classe <- factor(as.character( training3$classe) )
+
+
+
+TEST =  FALSE 
+if(TEST) {
+index <- sample(nrow(training),size=500, replace= FALSE )
+training3 <- training3[ index, ]
+dim(training3)
+}
+
+
+
+ 
+library(caret)
+
+
+inTrain <- createDataPartition( y=training3$classe, p=0.7,  list=FALSE)
+trainSet <- training3[inTrain, ]
+testSet <- training3[-inTrain, ]
+validationSet <- testing3
+
+dim(trainSet)
+dim(testSet)
+dim(validationSet)
+
+
+set.seed(12345)
+
+ctrl <- trainControl(method="oob", number=5)
+modelFit <- train(classe~., data=trainSet, method="rf", 
+                  trControl=ctrl, ntree=500, tuneLength=5, metric="Accuracy")
+
+modelFit
+
+```
+
+```{r try}
+pred <- predict(modelFit, trainSet)
+print("Model accuracy -training set")
+table(pred, trainSet$classe)
+
+pred <- predict(modelFit, testSet)
+print("Model accuracy -testing set")
+table(pred, testSet$classe)
+
+
+# confusion matrix
+
+cm <- confusionMatrix(data= pred,  
+                reference= testSet$classe  )    
+cm
+myAccuracy <- cm$overall["Accuracy"] * 100
+myAccuracy <- as.character(round(myAccuracy, 2))
+
+```
+```{r trys}
+
+
+varImp(modelFit)
+varlist <- varImp(modelFit)
+
+
+vli <- varlist$importance[ order(varlist$importance$Overall, decreasing=TRUE), ,drop=FALSE]
+numShown <- 10
+myBars <- as.matrix(vli[1:numShown,])
+myNames <- rownames(vli)[1:numShown]
+
+op <- par(no.readonly = TRUE) 
+par(mai=c(1,2,1,1)+0.1 ) 
+myColors <- c("#FF5733", "#FFC300", "#C70039", "#900C3F", "#581845", "#FF5733", "#FFC300", "#C70039", "#900C3F", "#581845")
+
+barplot(myBars,
+        horiz=TRUE,
+        beside = TRUE, 
+        names.arg = myNames,
+        col = myColors,
+        cex.names=0.7,
+        las=1,  # asix labels always horizontal
+        xlab="Relative Importance",
+        main=paste0("Top ", as.character(numShown), " Variables ranked by Importance"))
+
+par(op)
+
+testpred <- predict(modelFit, testing3)
+print("Predictions made on validation set")
+testpred
+
+
+# write out the files for submission
+
+answers <- as.character(testpred)
+
+# submission
+
+# answers = rep("A", 20) ie as a character vector
+
+pml_write_files = function(x){
+    n = length(x)
+    for(i in 1:n){
+        filename = paste0("problem_id_",i,".txt")
+        write.table(x[i],file=filename,quote=FALSE,row.names=FALSE,col.names=FALSE)
+    }
+}
+
+# this will write out twenty separate files, one for each answer
+# into your working directory
+
+pml_write_files(answers)
+
+
+```
+
+We have demonstrated that the random forest algorithm achieves excellent results on this dataset. The classification accuracy is greater than `r myAccuracy`% for predicting all 5 categories, thus showing that we can distinguish between correctly performed biceps curls, or the other 4 incorrect variations.
+
+After analyzing these results, we came to the following conclusions:
+
+- The confusion matrix shows the prediction accuracy of the algorithm in each category. We can see that the prediction accuracy for most categories is very high, almost close to 100%, which shows that the algorithm does an excellent job of distinguishing these categories.
+- Overall statistics show the overall accuracy of the algorithm as high as 99.6%, with a confidence interval between 99.4% and 99.7%. This shows that our model performs very well on this problem.
+- Category statistics show the sensitivity (Sensitivity), specificity (Specificity) and other evaluation indicators of each category. These indicators further verify the effectiveness of the model on different categories.
+- Variable Importance for Random Forest shows the top 20 variables that are most important in prediction. We can see that some sensor data (such as roll_belt, yaw_belt, etc.) are important to distinguish different poses, which is consistent with our intuition.
+
